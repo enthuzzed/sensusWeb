@@ -1,0 +1,118 @@
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { getTokenBalance } from '../lib/token';
+import { useAddress } from "@thirdweb-dev/react";
+
+const UserDashboard = () => {
+  const [recordings, setRecordings] = useState([]);
+  const [tokenBalance, setTokenBalance] = useState('0');
+  const [loading, setLoading] = useState(true);
+  const address = useAddress();
+
+  useEffect(() => {
+    if (address) {
+      fetchUserData();
+    }
+  }, [address]);
+
+  const fetchUserData = async () => {
+    setLoading(true);
+    try {
+      // Fetch recordings
+      const { data: recordingsData, error: recordingsError } = await supabase
+        .from('recordings')
+        .select('*')
+        .eq('user_id', address)
+        .order('created_at', { ascending: false });
+
+      if (recordingsError) throw recordingsError;
+      setRecordings(recordingsData);
+
+      // Fetch token balance
+      const balance = await getTokenBalance(address);
+      setTokenBalance(balance);
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleString();
+  };
+
+  const formatDuration = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <div className="mb-6 flex justify-between items-center">
+        <h2 className="text-2xl font-semibold text-gray-900">Your Dashboard</h2>
+        <div className="text-right">
+          <p className="text-sm text-gray-600">Total SENS Balance</p>
+          <p className="text-xl font-bold text-blue-600">{tokenBalance} SENS</p>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <h3 className="text-lg font-medium text-gray-900">Your Recordings</h3>
+        {loading ? (
+          <div className="text-center py-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          </div>
+        ) : recordings.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Topic</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Video</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {recordings.map((recording) => (
+                  <tr key={recording.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{recording.topic}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDuration(recording.duration)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(recording.created_at)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {recording.verified ? (
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                          Verified
+                        </span>
+                      ) : recording.flagged ? (
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                          Flagged
+                        </span>
+                      ) : (
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                          Pending
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600">
+                      <a href={recording.video_url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-800">
+                        View
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-center text-gray-500 py-4">No recordings yet</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default UserDashboard;
