@@ -158,17 +158,18 @@ const VideoRecorder = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: {
-          width: 1280,
-          height: 720,
-          facingMode: facingMode
+          facingMode: facingMode,
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
+          aspectRatio: { ideal: 16/9 },
+          frameRate: { ideal: 30, min: 24 }
         }, 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
           sampleRate: 44100,
-          channelCount: 1, // Mono audio
-          latency: 0,
+          channelCount: 1
         }
       });
       
@@ -440,11 +441,13 @@ const VideoRecorder = () => {
                     onUserMedia={handleUserMedia}
                     onUserMediaError={handleUserMediaError}
                     videoConstraints={{
-                      width: 1280,
-                      height: 720,
-                      facingMode: facingMode
+                      facingMode: facingMode,
+                      width: { ideal: 1280, min: 640 },
+                      height: { ideal: 720, min: 480 },
+                      aspectRatio: 1.777777778,
                     }}
                     className="w-full h-full object-cover"
+                    forceScreenshotSourceSize={true}
                   />
                   <div className="absolute top-4 right-4 bg-black bg-opacity-50 px-3 py-1 rounded-full text-white">
                     {formatTime(recordingTime)}
@@ -565,7 +568,7 @@ const VideoRecorder = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-200px)] flex flex-col items-center justify-center p-4 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm rounded-lg transition-colors duration-200">
+    <div className="min-h-[calc(100vh-300px)] flex flex-col items-center justify-center p-4 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm rounded-lg transition-colors duration-200">
       {renderStep()}
       <NotificationModal
         isOpen={notification.isOpen}
