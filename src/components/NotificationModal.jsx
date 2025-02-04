@@ -20,7 +20,7 @@ const NotificationModal = ({ isOpen, onClose, title, message, type = 'success' }
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         {/* Modal content */}
         <div 
-          className="relative bg-white rounded-xl max-w-sm w-full mx-auto p-6 shadow-2xl transform transition-all"
+          className="relative bg-white dark:bg-gray-800 rounded-xl max-w-sm w-full mx-auto p-6 shadow-2xl transform transition-all"
           role="document"
         >
           <div className="flex items-center mb-4">
@@ -37,12 +37,12 @@ const NotificationModal = ({ isOpen, onClose, title, message, type = 'success' }
                 </svg>
               </div>
             )}
-            <h2 id="modal-title" className="text-xl font-semibold text-gray-900">
+            <h2 id="modal-title" className="text-xl font-semibold text-gray-900 dark:text-white">
               {title}
             </h2>
           </div>
           
-          <p className="text-gray-600 text-lg mb-6">{message}</p>
+          <p className="text-gray-600 dark:text-gray-300 text-lg mb-6">{message}</p>
           
           <div className="flex justify-end">
             <button

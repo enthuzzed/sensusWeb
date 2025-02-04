@@ -11,8 +11,8 @@ const TopicSelector = ({ onSelect }) => {
   const [mainTopic, setMainTopic] = React.useState(null);
   
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold mb-4">Select Recording Topic</h2>
+    <div className="space-y-4 w-full max-w-2xl mx-auto bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 shadow-lg">
+      <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Select Recording Topic</h2>
       
       {!mainTopic ? (
         <div className="grid grid-cols-2 gap-4">
@@ -20,7 +20,7 @@ const TopicSelector = ({ onSelect }) => {
             <button
               key={topic}
               onClick={() => setMainTopic(topic)}
-              className="p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow text-left"
+              className="p-4 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 rounded-lg shadow transition-colors duration-200 text-left"
             >
               <span className="capitalize">{topic}</span>
             </button>
@@ -41,7 +41,7 @@ const TopicSelector = ({ onSelect }) => {
               <button
                 key={subTopic}
                 onClick={() => onSelect(`${mainTopic}/${subTopic}`)}
-                className="p-4 bg-white rounded-lg shadow hover:shadow-md transition-shadow text-left"
+                className="p-4 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 rounded-lg shadow transition-colors duration-200 text-left"
               >
                 {subTopic}
               </button>

@@ -22,7 +22,8 @@ const VideoRecorder = () => {
   const [cameraError, setCameraError] = useState(null);
   const [isCameraPermissionGranted, setIsCameraPermissionGranted] = useState(false);
   const [notification, setNotification] = useState({ isOpen: false, title: '', message: '', type: 'success' });
-  
+  const [facingMode, setFacingMode] = useState("user");
+
   const address = useAddress();
   const webcamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -120,6 +121,11 @@ const VideoRecorder = () => {
     setIsWebcamReady(true);
     setIsCameraPermissionGranted(true);
     setCameraError(null);
+    
+    // Mute all audio output to prevent feedback
+    if (webcamRef.current && webcamRef.current.video) {
+      webcamRef.current.video.muted = true;
+    }
   };
 
   const handleUserMediaError = (error) => {
@@ -153,11 +159,24 @@ const VideoRecorder = () => {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: {
           width: 1280,
-          height: 720
+          height: 720,
+          facingMode: facingMode
         }, 
-        audio: true 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1, // Mono audio
+          latency: 0,
+        }
       });
       
+      // Ensure audio output is muted to prevent feedback
+      if (webcamRef.current && webcamRef.current.video) {
+        webcamRef.current.video.muted = true;
+      }
+
       if (webcamRef.current) {
         webcamRef.current.video.srcObject = stream;
       }
@@ -354,12 +373,16 @@ const VideoRecorder = () => {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const toggleCamera = () => {
+    setFacingMode((prevMode) => (prevMode === "user" ? "environment" : "user"));
+  };
+
   const renderStep = () => {
     switch (step) {
       case 'connect':
         return (
           <div className="text-center py-12">
-            <h2 className="text-2xl font-semibold text-gray-700">
+            <h2 className="text-2xl font-semibold text-gray-800 dark:text-gray-200">
               Please connect your wallet to start recording
             </h2>
           </div>
@@ -368,7 +391,7 @@ const VideoRecorder = () => {
       case 'authenticate':
         return (
           <div className="text-center py-12">
-            <h2 className="text-2xl font-semibold text-gray-700">
+            <h2 className="text-2xl font-semibold text-gray-800 dark:text-gray-200">
               Authenticating...
             </h2>
           </div>
@@ -385,13 +408,13 @@ const VideoRecorder = () => {
           <div className="flex flex-col items-center space-y-4">
             <div className="w-full max-w-2xl">
               <div className="mb-4 flex justify-between items-center">
-                <h2 className="text-xl font-semibold">Recording: {selectedTopic}</h2>
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200">Recording: {selectedTopic}</h2>
                 <button
                   onClick={() => {
                     setSelectedTopic(null);
                     setStep('topic');
                   }}
-                  className="text-blue-600 hover:text-blue-800"
+                  className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
                 >
                   Change Topic
                 </button>
@@ -400,7 +423,7 @@ const VideoRecorder = () => {
             
             {!isCameraPermissionGranted ? (
               <div className="text-center space-y-4">
-                <p className="text-gray-600">Camera access is required to record videos.</p>
+                <p className="text-gray-600 dark:text-gray-400">Camera access is required to record videos.</p>
                 <button
                   onClick={requestCameraPermission}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -419,7 +442,7 @@ const VideoRecorder = () => {
                     videoConstraints={{
                       width: 1280,
                       height: 720,
-                      facingMode: "user"
+                      facingMode: facingMode
                     }}
                     className="w-full h-full object-cover"
                   />
@@ -452,6 +475,13 @@ const VideoRecorder = () => {
                       Stop Recording
                     </button>
                   )}
+                  <button
+                    onClick={toggleCamera}
+                    disabled={isRecording}
+                    className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
+                  >
+                    Swap Camera
+                  </button>
                 </div>
               </>
             )}
@@ -463,8 +493,8 @@ const VideoRecorder = () => {
           <div className="flex flex-col items-center space-y-4">
             <div className="w-full max-w-2xl">
               <div className="mb-4">
-                <h2 className="text-xl font-semibold">Preview Recording</h2>
-                <p className="text-gray-600">Duration: {formatTime(recordingTime)}</p>
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200">Preview Recording</h2>
+                <p className="text-gray-600 dark:text-gray-400">Duration: {formatTime(recordingTime)}</p>
               </div>
             </div>
             
@@ -500,10 +530,10 @@ const VideoRecorder = () => {
 
             {isUploading && (
               <div className="text-center space-y-2">
-                <div className="text-gray-600">
+                <div className="text-gray-600 dark:text-gray-400">
                   Processing recording... {uploadProgress}%
                 </div>
-                <div className="w-full max-w-md h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div className="w-full max-w-md h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-blue-600 transition-all duration-300" 
                     style={{ width: `${uploadProgress}%` }}
@@ -517,10 +547,10 @@ const VideoRecorder = () => {
       case 'upload':
         return (
           <div className="text-center space-y-4">
-            <div className="text-gray-600">
+            <div className="text-gray-600 dark:text-gray-400">
               Processing recording... {uploadProgress}%
             </div>
-            <div className="w-full max-w-md h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="w-full max-w-md h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-blue-600 transition-all duration-300" 
                 style={{ width: `${uploadProgress}%` }}
@@ -535,7 +565,7 @@ const VideoRecorder = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-200px)] flex flex-col items-center justify-center p-4">
+    <div className="min-h-[calc(100vh-200px)] flex flex-col items-center justify-center p-4 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm rounded-lg transition-colors duration-200">
       {renderStep()}
       <NotificationModal
         isOpen={notification.isOpen}
