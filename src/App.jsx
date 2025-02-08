@@ -11,6 +11,12 @@ function App() {
   const [activeTab, setActiveTab] = useState('record'); // 'record' or 'dashboard'
   const { theme, toggleTheme } = useTheme();
 
+  const handleLogoClick = () => {
+    if (address) {
+      setActiveTab('record');
+    }
+  };
+
   return (
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-cyan-100 via-blue-100 to-purple-100 dark:from-indigo-900 dark:via-purple-900 dark:to-blue-900 transition-colors duration-200">
       {/* Dynamic vector background */}
@@ -30,7 +36,10 @@ function App() {
       <div className="relative z-10 pb-16">
         <header className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-md shadow-lg transition-colors duration-200">
           <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-            <div className="flex items-center space-x-4">
+            <div 
+              onClick={handleLogoClick}
+              className="flex items-center space-x-4 cursor-pointer hover:opacity-80 transition-opacity"
+            >
               <img 
                 src={theme === 'dark' ? logoDark : logoLight} 
                 alt="SensusAI Logo" 
