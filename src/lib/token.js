@@ -1,28 +1,47 @@
 import { ethers } from 'ethers';
+import { supabase } from './supabase';  // Add this import
 
-const SENS_TOKEN_ADDRESS = '0xbB0F4a74b0433D4876d3B7E690895FB06e004D0E';
-const MIN_RECORDING_DURATION = 10; // Minimum 10 seconds for any reward
+export const SENS_TOKEN_ADDRESS = '0xbB0F4a74b0433D4876d3B7E690895FB06e004D0E';
+export const REWARD_CONTRACT_ADDRESS = '0xB5577097D5ee062266d0540Dd8905E6A0d7454f2';
+export const REFERRAL_CONTRACT_ADDRESS = '0x5003b08600296a36E19e7D1a0d8f6AA981fB53A0';
+const MIN_RECORDING_DURATION = 10; // Minimum 10 seconds for rewards
 const TOKENS_PER_10_SECONDS = ethers.utils.parseUnits("1", 18); // 1 SENS per 10 seconds
 
-// Basic ERC20 ABI for transfer function
+// Contract ABIs
+const REWARD_ABI = [
+  "function rewardUser(uint256 _duration) external",
+  "function getRewardAmount(uint256 _duration) external pure returns (uint256)",
+  "function dailyRewardAmount(address) external view returns (uint256)",
+  "function MAX_DAILY_REWARD() external pure returns (uint256)",
+  "function sensToken() external view returns (address)"
+];
+
 const TOKEN_ABI = [
   "function transfer(address to, uint256 amount) returns (bool)",
   "function balanceOf(address account) view returns (uint256)"
+];
+
+const REFERRAL_ABI = [
+  "function processReferral(address referrer, address referred) external",
+  "function getReferralCount(address user) external view returns (uint256)",
+  "function referralCount(address) external view returns (uint256)",
+  "function hasBeenReferred(address) external view returns (bool)",
+  "function dailyReferralCount(address) external view returns (uint256)",
+  "function lastReferralDay(address) external view returns (uint256)",
+  "function REFERRAL_REWARD() external view returns (uint256)",
+  "function MAX_DAILY_REFERRALS() external view returns (uint256)"
 ];
 
 export const calculateReward = (durationInSeconds) => {
   if (durationInSeconds < MIN_RECORDING_DURATION) {
     return ethers.BigNumber.from(0);
   }
-  
-  // Calculate how many complete 10-second intervals were recorded
-  const tenSecondIntervals = Math.floor(durationInSeconds / 10);
-  return TOKENS_PER_10_SECONDS.mul(tenSecondIntervals);
+  const tenSecondIntervals = ethers.BigNumber.from(Math.floor(durationInSeconds / 10));
+  return tenSecondIntervals.mul(TOKENS_PER_10_SECONDS);
 };
 
-export const rewardUser = async (address, durationInSeconds) => {
+export const rewardUser = async (userAddress, durationInSeconds) => {
   try {
-    // Check if MetaMask is installed
     if (!window.ethereum) {
       return { 
         success: false, 
@@ -32,10 +51,10 @@ export const rewardUser = async (address, durationInSeconds) => {
     }
 
     const provider = new ethers.providers.Web3Provider(window.ethereum);
-    
-    // Check if user is connected to the correct network (Sepolia)
+    const signer = provider.getSigner();
+
     const network = await provider.getNetwork();
-    if (network.chainId !== 11155111) { // Sepolia chainId
+    if (network.chainId !== 11155111) {
       return {
         success: false,
         reason: 'WRONG_NETWORK',
@@ -43,9 +62,9 @@ export const rewardUser = async (address, durationInSeconds) => {
       };
     }
 
-    const signer = provider.getSigner();
-    const tokenContract = new ethers.Contract(SENS_TOKEN_ADDRESS, TOKEN_ABI, signer);
-    
+    const rewardContract = new ethers.Contract(REWARD_CONTRACT_ADDRESS, REWARD_ABI, signer);
+    const tokenContract = new ethers.Contract(SENS_TOKEN_ADDRESS, TOKEN_ABI, provider);
+
     const rewardAmount = calculateReward(durationInSeconds);
     if (rewardAmount.isZero()) {
       return { 
@@ -55,30 +74,27 @@ export const rewardUser = async (address, durationInSeconds) => {
       };
     }
 
-    // Check contract balance first
-    const balance = await tokenContract.balanceOf(SENS_TOKEN_ADDRESS);
-    if (balance.lt(rewardAmount)) {
+    const contractBalance = await tokenContract.balanceOf(REWARD_CONTRACT_ADDRESS);
+    if (contractBalance.lt(rewardAmount)) {
       return { 
         success: false, 
-        reason: 'INSUFFICIENT_BALANCE',
+        reason: 'INSUFFICIENT_CONTRACT_BALANCE',
         message: 'Reward pool is currently empty. Please try again later.'
       };
     }
 
-    // Attempt transfer
-    const tx = await tokenContract.transfer(address, rewardAmount);
-    await tx.wait();
-    
-    const formattedAmount = ethers.utils.formatUnits(rewardAmount, 18);
+    const tx = await rewardContract.rewardUser(durationInSeconds);
+    const receipt = await tx.wait();
+
     return { 
       success: true,
-      amount: formattedAmount,
-      message: `You earned ${formattedAmount} SENS tokens!`
+      amount: ethers.utils.formatUnits(rewardAmount, 18),
+      message: `Successfully claimed ${ethers.utils.formatUnits(rewardAmount, 18)} SENS tokens!`
     };
+
   } catch (error) {
-    console.error('Error rewarding user:', error);
+    console.error('Error claiming reward:', error);
     
-    // Handle specific error cases
     if (error.code === 4001) {
       return {
         success: false,
@@ -97,8 +113,8 @@ export const rewardUser = async (address, durationInSeconds) => {
 
     return { 
       success: false,
-      reason: 'TRANSFER_FAILED',
-      message: 'Failed to send rewards. Please try again.',
+      reason: 'CLAIM_FAILED',
+      message: 'Failed to claim rewards. Please try again.',
       error: error
     };
   }
@@ -116,5 +132,133 @@ export const getTokenBalance = async (address) => {
   } catch (error) {
     console.error('Error getting token balance:', error);
     return '0';
+  }
+};
+
+export const processReferral = async (referrerId, referredId) => {
+  try {
+    if (!window.ethereum) {
+      throw new Error('No wallet found');
+    }
+
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+    
+    // Get the network to ensure we're on Sepolia
+    const network = await provider.getNetwork();
+    if (network.chainId !== 11155111) {
+      throw new Error('Please switch to Sepolia network');
+    }
+
+    console.log('Processing referral reward:', { referrerId, referredId });
+
+    const referralContract = new ethers.Contract(
+      REFERRAL_CONTRACT_ADDRESS,
+      REFERRAL_ABI,
+      signer
+    );
+
+    // Call the contract to process reward
+    const tx = await referralContract.processReferral(referrerId, referredId);
+    await tx.wait();
+
+    // Update the database
+    await supabase
+      .from('referrals')
+      .update({ 
+        status: 'completed',
+        tx_hash: tx.hash
+      })
+      .eq('referrer_id', referrerId)
+      .eq('referred_id', referredId);
+
+    return { success: true, message: 'Referral processed successfully!' };
+
+  } catch (error) {
+    console.error('Error processing referral:', error);
+
+    // Update with error status
+    await supabase
+      .from('referrals')
+      .update({ 
+        status: 'failed',
+        error_message: error.message
+      })
+      .eq('referrer_id', referrerId)
+      .eq('referred_id', referredId);
+
+    return { 
+      success: false, 
+      message: error.message || 'Failed to process referral'
+    };
+  }
+};
+
+export const getReferralCount = async (address) => {
+  try {
+    if (!window.ethereum) return 0;
+
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const referralContract = new ethers.Contract(REFERRAL_CONTRACT_ADDRESS, REFERRAL_ABI, provider);
+    
+    const count = await referralContract.getReferralCount(address);
+    return count.toNumber();
+  } catch (error) {
+    console.error('Error getting referral count:', error);
+    return 0;
+  }
+};
+
+export const getReferralStats = async (address) => {
+  try {
+    if (!window.ethereum) return {
+      totalReferrals: 0,
+      dailyReferrals: 0,
+      maxDailyReferrals: 0,
+      rewardPerReferral: '0'
+    };
+
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const referralContract = new ethers.Contract(
+      REFERRAL_CONTRACT_ADDRESS,
+      REFERRAL_ABI,
+      provider
+    );
+
+    // Get both contract and database stats
+    const [contractStats, { data: dbReferrals }] = await Promise.all([
+      Promise.all([
+        referralContract.referralCount(address),
+        referralContract.dailyReferralCount(address),
+        referralContract.MAX_DAILY_REFERRALS(),
+        referralContract.REFERRAL_REWARD()
+      ]),
+      supabase
+        .from('referrals')
+        .select('*')
+        .eq('referrer_id', address.toLowerCase())
+    ]);
+
+    console.log('Stats:', { 
+      contract: contractStats,
+      database: dbReferrals 
+    });
+
+    const [totalReferrals, dailyReferrals, maxDaily, reward] = contractStats;
+
+    return {
+      totalReferrals: totalReferrals.toNumber(),
+      dailyReferrals: dailyReferrals.toNumber(),
+      maxDailyReferrals: maxDaily.toNumber(),
+      rewardPerReferral: ethers.utils.formatUnits(reward, 18)
+    };
+  } catch (error) {
+    console.error('Error getting referral stats:', error);
+    return {
+      totalReferrals: 0,
+      dailyReferrals: 0,
+      maxDailyReferrals: 0,
+      rewardPerReferral: '0'
+    };
   }
 };
