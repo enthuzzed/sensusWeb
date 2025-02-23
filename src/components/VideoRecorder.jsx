@@ -21,8 +21,14 @@ const VideoRecorder = () => {
   const [isWebcamReady, setIsWebcamReady] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [isCameraPermissionGranted, setIsCameraPermissionGranted] = useState(false);
-  const [notification, setNotification] = useState({ isOpen: false, title: '', message: '', type: 'success' });
+  const [notification, setNotification] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'success'
+  });
   const [facingMode, setFacingMode] = useState("user");
+  const [isMobile, setIsMobile] = useState(false);
 
   const address = useAddress();
   const webcamRef = useRef(null);
@@ -30,6 +36,8 @@ const VideoRecorder = () => {
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
+
+  // --------------------- USE EFFECTS ---------------------
 
   useEffect(() => {
     // Get initial session
@@ -95,6 +103,18 @@ const VideoRecorder = () => {
     signInWithWallet();
   }, [address, session]);
 
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // --------------------- HELPER FUNCTIONS ---------------------
+
   const resetRecordingState = () => {
     setRecordingTime(0);
     setRecordingBlob(null);
@@ -108,7 +128,7 @@ const VideoRecorder = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       setIsCameraPermissionGranted(true);
-      stream.getTracks().forEach(track => track.stop()); // Clean up the test stream
+      stream.getTracks().forEach(track => track.stop());
       setCameraError(null);
     } catch (error) {
       console.error('Error requesting camera permission:', error);
@@ -121,7 +141,7 @@ const VideoRecorder = () => {
     setIsWebcamReady(true);
     setIsCameraPermissionGranted(true);
     setCameraError(null);
-    
+
     // Mute all audio output to prevent feedback
     if (webcamRef.current && webcamRef.current.video) {
       webcamRef.current.video.muted = true;
@@ -134,6 +154,21 @@ const VideoRecorder = () => {
     setIsWebcamReady(false);
     setIsCameraPermissionGranted(false);
   };
+
+  /**
+   * Use flexible "ideal" constraints to avoid forcing 1280×720
+   * that might cause zoom on mobile.
+   */
+  const getVideoConstraints = () => {
+    return {
+      facingMode: facingMode,
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      focusMode: 'continuous'
+    };
+  };
+
+  // --------------------- RECORDING FUNCTIONS ---------------------
 
   const startRecording = async () => {
     if (!selectedTopic) {
@@ -154,26 +189,18 @@ const VideoRecorder = () => {
     // Reset recording state
     resetRecordingState();
     
-    // Request fresh camera access
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: {
-          facingMode: facingMode,
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          aspectRatio: { ideal: 16/9 },
-          frameRate: { ideal: 30, min: 24 }
-        }, 
+      const constraints = {
+        video: getVideoConstraints(),
         audio: {
           echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 44100,
-          channelCount: 1
+          noiseSuppression: true
         }
-      });
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
-      // Ensure audio output is muted to prevent feedback
+      // Ensure audio output is muted
       if (webcamRef.current && webcamRef.current.video) {
         webcamRef.current.video.muted = true;
       }
@@ -228,7 +255,7 @@ const VideoRecorder = () => {
         mediaRecorderRef.current.stop();
         setIsRecording(false);
         
-        // Calculate final duration based on actual elapsed time
+        // Calculate final duration
         const finalDuration = Math.floor((Date.now() - startTimeRef.current) / 1000);
         setRecordingTime(finalDuration);
       } catch (error) {
@@ -257,6 +284,8 @@ const VideoRecorder = () => {
     }
   };
 
+  // --------------------- NOTIFICATION / UPLOAD ---------------------
+
   const showNotification = (title, message, type = 'success') => {
     setNotification({
       isOpen: true,
@@ -276,7 +305,7 @@ const VideoRecorder = () => {
       return;
     }
 
-    // Don't process if recording is too short
+    // Enforce minimum duration
     if (recordingTime < MIN_RECORDING_DURATION) {
       showNotification(
         'Recording Too Short',
@@ -294,7 +323,7 @@ const VideoRecorder = () => {
       
       setUploadProgress(20);
 
-      // Upload to storage first
+      // Upload to storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('recordings')
         .upload(fileName, recordingBlob, {
@@ -330,22 +359,15 @@ const VideoRecorder = () => {
 
       setUploadProgress(85);
 
-      // Try to reward user with proportional amount
+      // Attempt to reward user
       const rewardResult = await rewardUser(address, recordingTime);
       
       setUploadProgress(100);
       
       if (rewardResult.success) {
-        showNotification(
-          'Success!',
-          rewardResult.message
-        );
+        showNotification('Success!', rewardResult.message);
       } else {
-        showNotification(
-          'Warning',
-          rewardResult.message,
-          'warning'
-        );
+        showNotification('Warning', rewardResult.message, 'warning');
       }
       
       setStep('topic');
@@ -378,6 +400,8 @@ const VideoRecorder = () => {
     setFacingMode((prevMode) => (prevMode === "user" ? "environment" : "user"));
   };
 
+  // --------------------- RENDER STEPS ---------------------
+
   const renderStep = () => {
     switch (step) {
       case 'connect':
@@ -399,17 +423,23 @@ const VideoRecorder = () => {
         );
 
       case 'topic':
-        return <TopicSelector onSelect={(topic) => {
-          setSelectedTopic(topic);
-          setStep('record');
-        }} />;
+        return (
+          <TopicSelector
+            onSelect={(topic) => {
+              setSelectedTopic(topic);
+              setStep('record');
+            }}
+          />
+        );
 
       case 'record':
         return (
           <div className="flex flex-col items-center space-y-4">
             <div className="w-full max-w-2xl">
               <div className="mb-4 flex justify-between items-center">
-                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200">Recording: {selectedTopic}</h2>
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200">
+                  Recording: {selectedTopic}
+                </h2>
                 <button
                   onClick={() => {
                     setSelectedTopic(null);
@@ -424,7 +454,9 @@ const VideoRecorder = () => {
             
             {!isCameraPermissionGranted ? (
               <div className="text-center space-y-4">
-                <p className="text-gray-600 dark:text-gray-400">Camera access is required to record videos.</p>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Camera access is required to record videos.
+                </p>
                 <button
                   onClick={requestCameraPermission}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -434,20 +466,25 @@ const VideoRecorder = () => {
               </div>
             ) : (
               <>
-                <div className="relative w-full max-w-2xl aspect-video bg-black rounded-lg overflow-hidden">
+                {/* Container with more flexible height/width, removing forced aspect-ratio */}
+                <div
+                  className={`relative w-full ${
+                    isMobile ? 'h-auto' : 'max-w-2xl'
+                  } bg-black rounded-lg overflow-hidden`}
+                >
                   <Webcam
                     ref={webcamRef}
                     audio={true}
                     onUserMedia={handleUserMedia}
                     onUserMediaError={handleUserMediaError}
-                    videoConstraints={{
-                      facingMode: facingMode,
-                      width: { ideal: 1280, min: 640 },
-                      height: { ideal: 720, min: 480 },
-                      aspectRatio: 1.777777778,
+                    videoConstraints={getVideoConstraints()}
+                    className="w-full h-full"
+                    style={{
+                      transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+                      // Use 'contain' to prevent zoom/cropping
+                      objectFit: 'contain'
                     }}
-                    className="w-full h-full object-cover"
-                    forceScreenshotSourceSize={true}
+                    screenshotFormat="image/jpeg"
                   />
                   <div className="absolute top-4 right-4 bg-black bg-opacity-50 px-3 py-1 rounded-full text-white">
                     {formatTime(recordingTime)}
@@ -496,17 +533,22 @@ const VideoRecorder = () => {
           <div className="flex flex-col items-center space-y-4">
             <div className="w-full max-w-2xl">
               <div className="mb-4">
-                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200">Preview Recording</h2>
-                <p className="text-gray-600 dark:text-gray-400">Duration: {formatTime(recordingTime)}</p>
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200">
+                  Preview Recording
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Duration: {formatTime(recordingTime)}
+                </p>
               </div>
             </div>
             
-            <div className="relative w-full max-w-2xl aspect-video bg-black rounded-lg overflow-hidden">
+            <div className="relative w-full max-w-2xl bg-black rounded-lg overflow-hidden">
               {recordingBlob && (
                 <video
                   src={URL.createObjectURL(recordingBlob)}
                   controls
                   className="w-full h-full"
+                  style={{ objectFit: 'contain' }}
                 />
               )}
             </div>
@@ -537,8 +579,8 @@ const VideoRecorder = () => {
                   Processing recording... {uploadProgress}%
                 </div>
                 <div className="w-full max-w-md h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-600 transition-all duration-300" 
+                  <div
+                    className="h-full bg-blue-600 transition-all duration-300"
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
@@ -554,8 +596,8 @@ const VideoRecorder = () => {
               Processing recording... {uploadProgress}%
             </div>
             <div className="w-full max-w-md h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-blue-600 transition-all duration-300" 
+              <div
+                className="h-full bg-blue-600 transition-all duration-300"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
@@ -566,6 +608,8 @@ const VideoRecorder = () => {
         return null;
     }
   };
+
+  // --------------------- RETURN ---------------------
 
   return (
     <div className="min-h-[calc(100vh-300px)] flex flex-col items-center justify-center p-4 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm rounded-lg transition-colors duration-200">
